@@ -311,3 +311,157 @@ def test_get_statistics_for_nonexistent_item(get_statistics):
     nonexistent_id = "999999999"
     resp = get_statistics(nonexistent_id)
     assert resp.status_code == 404, f"Ожидается 404 для статистики несуществующего ID, получено {resp.status_code}"
+
+
+def test_create_item_without_name(seller_id, create_item):
+    """TC-07: Проверяет ошибку при создании объявления без обязательного поля 'name'."""
+    payload = {
+        "sellerID": seller_id,
+        # отсутствует "name"
+        "price": 1000,
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что name будет None
+    if os.getenv("USE_REAL_API", "0") != "1":
+        # Имитатор создаст объявление с name=None (это позволяет проверить поведение)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("name") is None, "name должен быть None когда не передан"
+        return
+    
+    # Для реального API ожидаем 400 Bad Request
+    assert resp.status_code == 400, f"Ожидается 400 для отсутствующего поля 'name', получено {resp.status_code}"
+
+
+def test_create_item_without_price(seller_id, create_item):
+    """TC-08: Проверяет ошибку при создании объявления без обязательного поля 'price'."""
+    payload = {
+        "sellerID": seller_id,
+        "name": "iPhone 15",
+        # отсутствует "price"
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что price будет None
+    if os.getenv("USE_REAL_API", "0") != "1":
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("price") is None, "price должен быть None когда не передан"
+        return
+    
+    # Для реального API ожидаем 400 Bad Request
+    assert resp.status_code == 400, f"Ожидается 400 для отсутствующего поля 'price', получено {resp.status_code}"
+
+
+def test_create_item_with_negative_price(seller_id, create_item):
+    """TC-09: Проверяет ошибку при создании объявления с отрицательной ценой."""
+    payload = {
+        "sellerID": seller_id,
+        "name": "iPhone 15",
+        "price": -1000,  # Отрицательная цена
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что цена сохранится как есть (для демонстрации)
+    if os.getenv("USE_REAL_API", "0") != "1":
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("price") == -1000, "Имитатор сохранит отрицательную цену (нужна валидация на сервере)"
+        return
+    
+    # Для реального API ожидаем 400 Bad Request
+    assert resp.status_code == 400, f"Ожидается 400 для отрицательной цены, получено {resp.status_code}"
+
+
+def test_create_item_with_empty_name(seller_id, create_item):
+    """TC-10: Проверяет ошибку при создании объявления с пустым именем."""
+    payload = {
+        "sellerID": seller_id,
+        "name": "",  # Пустая строка
+        "price": 1000,
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что пустая строка будет сохранена
+    if os.getenv("USE_REAL_API", "0") != "1":
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("name") == "", "Имитатор сохранит пустую строку (нужна валидация на сервере)"
+        return
+    
+    # Для реального API ожидаем 400 Bad Request
+    assert resp.status_code == 400, f"Ожидается 400 для пустого имени, получено {resp.status_code}"
+
+
+def test_create_item_with_invalid_seller_id(create_item):
+    """TC-11: Проверяет ошибку при создании объявления с недопустимым sellerID (вне диапазона 111111-999999)."""
+    payload = {
+        "sellerID": 100000,  # Вне диапазона 111111-999999
+        "name": "iPhone 15",
+        "price": 1000,
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что sellerID будет сохранён как есть
+    if os.getenv("USE_REAL_API", "0") != "1":
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("sellerId") == 100000, "Имитатор сохранит любой sellerID (нужна валидация на сервере)"
+        return
+    
+    # Для реального API ожидаем 400 Bad Request
+    assert resp.status_code == 400, f"Ожидается 400 для недопустимого sellerID, получено {resp.status_code}"
+
+
+def test_create_item_with_very_long_name(seller_id, create_item):
+    """TC-12: Проверяет обработку объявления с очень длинным названием (граничный случай)."""
+    long_name = "A" * 2000  # Название из 2000 символов
+    payload = {
+        "sellerID": seller_id,
+        "name": long_name,
+        "price": 1000,
+        "statistics": {"likes": 0, "viewCount": 0, "contacts": 0},
+    }
+    
+    resp = create_item(payload)
+    
+    # Если используется имитатор, проверяем, что длинное имя будет сохранено
+    if os.getenv("USE_REAL_API", "0") != "1":
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body.get("name") == long_name, "Имитатор сохранит длинное имя"
+        return
+    
+    # Для реального API — может быть 200 OK (если нет ограничения) или 400 (если есть ограничение)
+    if resp.status_code == 200:
+        body = resp.json()
+        # Проверяем, что имя либо сохранено полностью, либо обрезано
+        assert body.get("name") is not None, "Имя должно быть в ответе"
+    elif resp.status_code == 400:
+        # Если сервер отвергает длинные названия
+        pass
+    else:
+        assert False, f"Ожидается 200 или 400, получено {resp.status_code}"
+
+
+def test_get_items_for_nonexistent_seller(get_items_by_seller):
+    """TC-13: Проверяет получение объявлений для продавца, у которого нет объявлений."""
+    nonexistent_seller_id = 999999
+    resp = get_items_by_seller(nonexistent_seller_id)
+    
+    assert resp.status_code == 200, f"Ожидается 200 для несуществующего продавца, получено {resp.status_code}"
+    
+    items = resp.json()
+    assert isinstance(items, list), "Ответ должен быть списком"
+    assert len(items) == 0, f"Ожидается пустой список для продавца без объявлений, получено {len(items)} элементов"
